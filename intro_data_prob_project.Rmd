@@ -1,0 +1,230 @@
+---
+title: "Exploring the BRFSS data"
+output: 
+  html_document: 
+    fig_height: 4
+    highlight: pygments
+    theme: spacelab
+    toc: true
+    toc_float: true
+---
+
+## Setup
+
+### Load packages
+
+```{r load-packages, message = FALSE}
+library(ggplot2)
+library(dplyr)
+```
+
+### Load data
+
+```{r load-data}
+load("brfss2013.RData")
+```
+
+
+* * *
+
+## Part 1: Data
+Observations are collected randomly from all states in the United States (US) via monthly telephone interviews or surveys: <p>
+<ul>
+  <li> Landline : randomly selected adult in the a household
+  <li> Cellular : randomly selected adult in private residence or college housing
+</ul>
+
+This data collection method is not truly random since it introduces convenient sampling and non-response bias. For example, this data collection method limits responses to residents who own and use a landline or cellular phone rather than anyone from the entire population. Potential subjects may also not be available to participate in telephone interviews. Hence, this restricts the generalisability of the findings.
+
+In addition, this data collection method is not conducted under any controlled environment or experimental setting. This means that various confounding factors may potentially influence the results. Hence, the findings may at most suggest a correlation between the measured and observed variables but not causation.
+
+* * *
+
+## Part 2: Research questions
+How much money is enough? In the pursuit for wealth and riches, people may work extremely hard and over long hours to please their bosses. Hence, the below 3 research questions seek to investigate the impact of income on sleeps patterns and a person's physical and mental wellbeing. It is assumed that income level correlates to work intensity.
+
+**Research quesion 1:**
+How does income level impact sleep pattern? <br>
+Explanatory variable: `income2` <br>
+Response variable: `sleptim1` <br>
+
+**Research quesion 2:**
+How does sleep pattern impact physical and mental wellbeing? <br>
+Explantory variable: `sleptim1` <br>
+Response variable: `physhlth`, `menthlth` <br>
+
+**Research quesion 3:**
+How does income level impact physical and mental wellbeing? <br>
+Explantory variable: `income2` <br>
+Response variable: `physhlth`, `menthlth` <br>
+
+* * *
+
+## Part 3: Exploratory data analysis
+
+**Research quesion 1:**
+The first part is a statistical summary table for the median, mean, and standard deviation of sleep time (in hrs) observed for each income bracket. It can be observed that there is marginal difference in the average sleep time with the higher income brackets performing slightly better than the lower income brackets. It can also be observed from the lower standard deviation that the variability of average sleep time is significantly smaller for the higher income bracket than the lower income bracket.
+
+```{r}
+rq1 <- brfss2013 %>% 
+  select(income2, sleptim1) %>% 
+  filter(income2 != "NA")
+
+rq1_summary <- rq1 %>%
+  group_by(income2) %>% 
+  rename(`Income Bracket` = income2) %>%
+  summarise(`Sample Size` = n(),
+            Median = median(sleptim1, na.rm = TRUE),
+            Mean = mean(sleptim1, na.rm = TRUE), 
+            SD = sd(sleptim1, na.rm = TRUE))
+
+rq1_summary
+```
+
+We can also visualise the above distribution using histograms. For each income bracket, it can be observed that while the median and mean are about 7hrs of sleep time, the variability of average sleep time is much lower (i.e. concentrated about the mean) for respondents from the higher income bracket.
+
+```{r}
+ggplot(data = rq1 %>% group_by(income2),
+       aes(x = sleptim1)) +
+  geom_histogram(aes(y = ..density..),
+                 binwidth = 1,
+                 na.rm = TRUE) +
+  labs(x = "Sleep Time (hrs)", y = "Distribution") +
+  lims(x = c(1, 11)) +
+  theme(axis.title.y = element_text(angle = 360, vjust = 0.5)) +
+  facet_wrap(~income2,
+             nrow = 2)
+
+rm(rq1)
+```
+
+Finally, given the large sample size for each income bracket, the distribution may be approximated as a normal distribution. Consequently, a z-test may be used to determine whether the difference in sleep time across income brackets is statistically significant or in fact due to chance. <br>
+<ul>
+  <li> H<sub>0</sub> : There is no difference in average sleep time across income brackets.
+  <li> H<sub>1</sub> : There is difference in average sleep time across income brackets.
+</ul>
+
+```{r}
+z_score <- function(avg_a, avg_b, sd_a, sd_b, n_a, n_b){
+  return((avg_a - avg_b) / sqrt(sd_a ** 2 / n_a + sd_b ** 2 / n_b))
+}
+
+z_score(rq1_summary$Mean[1], rq1_summary$Mean[8],
+        rq1_summary$SD[1], rq1_summary$SD[8],
+        rq1_summary$`Sample Size`[1], rq1_summary$`Sample Size`[8])
+```
+
+Reference to the z-score table, it can be said that the null hypothesis can be rejected at 95% significance since the probability that the difference in average sleep time being attributed to chance is near zero. Hence, there is an observed negative correlation between income bracket and average sleep time.
+
+**Research quesion 2:**
+For this question, assume that a subject may sleep between 2 to 12 hours per day. Inference from question one, this should cover between 2 to 3 standard deviations from the mean. Below is a summary of the observations. `Physical Health` and `Mental Health` refer to the number of days during the past 30 days that the subject indicated poor health condition.
+
+```{r}
+rq2 <- brfss2013 %>% 
+  select(sleptim1, physhlth, menthlth) %>% 
+  filter(sleptim1 != "NA", 
+         physhlth != "NA", 
+         menthlth != "NA") %>%
+  filter(between(sleptim1, 2, 12), 
+         between(physhlth, 0, 30), 
+         between(menthlth, 0, 30))
+
+rq2_summary <- rq2 %>%
+  rename(`Sleep Time (hrs)` = sleptim1, 
+         `Physical Health` = physhlth, 
+         `Mental Health` = menthlth) %>% 
+  summary()
+
+rq2_summary
+```
+
+The data points can be visualised via a point chart below. The clustering of data points at the lower left quadrant suggests that subjects who had between 6 to 9 hours of sleep time tend to have better overall health physically and mentally than the rest.
+
+```{r}
+ggplot(data = rq2,
+       aes(x = physhlth, y = menthlth), 
+       na.rm = TRUE) +
+  geom_point() +
+  labs(x = "Physical Health", y = "Mental Health") +
+  theme(axis.title.y = element_text(angle = 360, vjust = 0.5)) +
+  facet_wrap(~sleptim1)
+```
+
+To add clarity, a new variable `Overall Health` can be constructed and assumed to be the simple average of `Physical Health` and `Mental Health`.
+
+```{r}
+rq2_summary_2 <- rq2 %>% 
+  mutate(`Overall Health` = (physhlth + menthlth) / 2) %>%
+  rename(`Sleep Time (hrs)` = sleptim1) %>%
+  select(`Sleep Time (hrs)`, `Overall Health`) %>%
+  group_by(`Sleep Time (hrs)`) %>%
+  summarise(`Overall Health` = mean(`Overall Health`))
+
+rq2_summary_2
+```
+
+Next, the data points may be plotted and fitted to a parabolic equation `y = 0.35x2 - 5.60x + 25.50`. Using derivative computation, we can estimate the optimal sleep time to be approximately 7.90 hrs.
+
+```{r}
+rq2_summary_3 <- summary(glm(rq2_summary_2$`Overall Health` ~ poly(rq2_summary_2$`Sleep Time (hrs)`, 2, raw = TRUE)))
+
+rq2_summary_3$coefficients
+
+ggplot(data = rq2_summary_2, aes(x = `Sleep Time (hrs)`, y = `Overall Health`)) +
+  geom_point() +
+  theme(axis.title.y = element_text(angle = 360, vjust = 0.5)) +
+  geom_smooth(method = "glm", 
+              se = FALSE,
+              formula =  y ~ poly(x, 2))
+
+rm(rq2)
+```
+
+Hence, it may be observed that sleep pattern is likely to influence overall physical and mental wellbeing. Given that sleep time deviates from optimal, then the likelihood that a person's overall health deterioriates increases.
+
+**Research quesion 3:**
+For the final question, the effect of income on physical and mental health is investigated. Observations are summarised in the below table and plot.
+
+```{r}
+rq3 <- brfss2013 %>% 
+  select(income2, physhlth, menthlth) %>% 
+  filter(income2 != "NA", 
+         physhlth != "NA", 
+         menthlth != "NA") %>%
+  filter(between(physhlth, 0, 30), 
+         between(menthlth, 0, 30))
+
+rq3_summary <- rq3 %>%
+  mutate(`Overall Health` = (physhlth + menthlth) / 2) %>%
+  group_by(income2) %>%
+  rename(`Income Bracket` = income2,
+         `Physical Health` = physhlth,
+         `Mental Health` = menthlth) %>%
+  summarise_all(mean)
+
+rq3_summary
+```
+
+```{r}
+ggplot(data = rq3_summary, aes(x = `Income Bracket`, size = 3)) +
+  geom_point(aes(y = `Physical Health`, color = "Physical Health")) +
+  geom_point(aes(y = `Mental Health`, color = "Mental Health")) +
+  geom_point(aes(y = `Overall Health`, color = "Overall Health")) +
+  labs(x = "Income Bracket",
+       y = "Number of Poor Health Days",
+       color = "Health Type") +
+  coord_flip() +
+  theme(axis.title.y = element_text(angle = 360, vjust = 0.5)) +
+  guides(size = FALSE) + 
+  scale_color_manual(values=c(rgb(1,0,0),rgb(0,0,0),rgb(0,0,1)))
+
+rm(rq3)
+```
+
+Based on the above point plot, there can be observed a negative correlation between overall health and income bracket. Given the following conclusions drawn from the earlier research questions:
+<ol>
+  <li>**Research Question 1 :** Higher proportion of subjects from higher income bracket has an average of 7 hours of sleep time
+  <li>**Research Question 2 :** An optimal sleep time of around 7.9 hrs improves overall health
+</ol>
+
+then **Research Question 3** supports the overall conclusion that a person from a higher income group may have better overall health. However, recall that this may not be a generalisable conclusion to the population since the sampling method was not truly random.
